@@ -19,7 +19,9 @@
         this.config.rectangleClass = config.rectangleClass || "";
         this.config.rectParentNode = (config.rectParentNode && config.rectParentNode.select) ? config.rectParentNode : (config.rectParentNode ? this.d3.select(config.rectParentNode) : null); // make it a d3 selection if it isn't
         this.config.onSelect = config.onSelect;
+        this.config.onDragStart = config.onDragStart;
         this.config.onDragEnd = config.onDragEnd;
+        this.config.onDragStart = config.onDragStart;
         this.config.multiSelectKey = config.multiSelectKey;
     }
     
@@ -55,6 +57,11 @@
         this.config.onSelect = cb;
         return this;
     };
+    fn.onDragStart = function(cb) {
+        if (!arguments.length) return this.config.onDragStart;
+        this.config.onDragStart = cb;
+        return this;
+    };
     fn.onDragEnd = function(cb) {
         if (!arguments.length) return this.config.onDragEnd;
         this.config.onDragEnd = cb;
@@ -86,6 +93,7 @@
             if (rect) rect.remove();
             dragging = true;
             var point = $$.d3.mouse(this);
+            if ($$.config.onDragStart) $$.config.onDragStart(); // .call? if yes, what scope?
             rect = ($$.config.rectParentNode || node)
                     .append("rect")
                     .attr("x", point[0])
@@ -96,7 +104,7 @@
                     .classed($$.config.rectangleClass, $$.config.rectangleClass ? true : false);
         })
         .on("mousemove", function(d, i, a) {
-            if (dragging && rect && !rect.empty()) {
+            if (dragging && ($$.d3.select(rect.node)) && !rect.empty()) {
                 var point = $$.d3.mouse(this),
                     update = {
                         x:      parseInt(rect.attr("x"), 10),
@@ -123,20 +131,24 @@
                 rect.attr(update);
                 if ($$.config.selectNode === "circle") {
                     node.selectAll($$.config.selectFilter || $$.config.selectNode)
-                        .each(function(d,i,a){
+                        .each(function(d, i, a) {
                             var thisCircle = $$.d3.select(this);
                             if (circleWithinArea({ x: thisCircle.attr("cx"), y: thisCircle.attr("cy"), r: thisCircle.attr("r") }, update)) {
                                 thisCircle.classed($$.config.selectedClass, true);
+                                if ($$.config.onSelect)
+                                    $$.config.onSelect.call(this, d, i, a);
                             } else {
                                 thisCircle.classed($$.config.selectedClass, false);
                             }
                     });
                 } else if ($$.config.selectNode === "rect") {
                     node.selectAll($$.config.selectFilter || $$.config.selectNode)
-                        .each(function(d,i,a){
+                        .each(function(d, i, a) {
                             var thisRect = $$.d3.select(this);
                             if (rectWithinArea({ x: thisRect.attr("x"), y: thisRect("y"), width: thisRect.attr("width"), height: thisRect.attr("height") }, update)) {
                                 thisRect.classed($$.config.selectedClass, true);
+                                if ($$.config.onSelect)
+                                    $$.config.onSelect.call(this, d, i, a);
                             } else {
                                 thisRect.classed($$.config.selectedClass, false);
                             }
@@ -147,6 +159,10 @@
         .on("mouseup", function(d, i, a) {
             rect.remove();
             dragging = false;
+            if ($$.config.onDragEnd) {
+                var selected = node.selectAll($$.config.selectFilter || $$.config.selectNode).selectAll("." + $$.config.selectedClass);
+                $$.config.onDragEnd.call(selected, selected);
+            }
         });
     }
     
