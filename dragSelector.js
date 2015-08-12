@@ -112,7 +112,7 @@
                     .classed($$.config.rectangleClass, $$.config.rectangleClass ? true : false);
         })
         .on("mousemove", function(d, i, a) {
-            if (rect && ($$.d3.select(rect.node)) && !rect.empty()) {
+            if (rect && ($$.d3.select(rect.node())) && !rect.empty()) {
                 if ($$.config.preventDragBubbling) pauseEvent($$.d3.event);
                 var update = getUpdatedRect($$.d3.mouse(this), rect);
                 rect.attr(update);
@@ -120,6 +120,8 @@
                     circleSearch.call($$, targets, update);
                 } else if ($$.config.selectNode === "rect") {
                     rectSearch.call($$, targets, update);
+                } else if ($$.config.selectNode === "path") {
+                    pathSearch.call($$, targets, update);
                 }
                 var found = targets.filter("." + $$.config.selectedClass);
                 var foundIdx = "";
@@ -174,7 +176,7 @@
                 if (circleWithinArea({ x: thisCircle.attr("cx"), y: thisCircle.attr("cy"), r: thisCircle.attr("r") }, rect)) {
                     thisCircle.classed($$.config.selectedClass, true);
                 } else {
-                    thisCircle.classed($$.config.selectedClass, false);
+                   thisCircle.classed($$.config.selectedClass, false);
                 }
         });
     }
@@ -184,12 +186,40 @@
         targetRects
             .each(function(d, i, a) {
                 var thisRect = $$.d3.select(this);
-                if (rectWithinArea({ x: thisRect.attr("x"), y: thisRect("y"), width: thisRect.attr("width"), height: thisRect.attr("height") }, rect)) {
+                if (rectWithinArea({ x: parseInt(thisRect.attr("x"), 10), y: parseInt(thisRect.attr("y"), 10), width: parseInt(thisRect.attr("width"), 10), height: parseInt(thisRect.attr("height"), 10) }, rect)) {
                     thisRect.classed($$.config.selectedClass, true);
                 } else {
                     thisRect.classed($$.config.selectedClass, false);
                 }
         });
+    }
+    
+    function pathSearch(targetPath, rect) {
+        var $$ = this;
+        targetPath
+            .each(function(d, i, a) {
+                var lineSegments = this.pathSegList,
+                    previousPoint = lineSegments[0]/*{ x: .x, y: lineSegments[0].y }*/,
+                    lineSelection = $$.d3.select(this);
+                for (var j = 1, l = lineSegments.length; j < l; j++){
+                    var segment = lineSegments[j];
+                    switch (segment.pathSegType) {
+                        case SVGPathSeg.PATHSEG_MOVETO_ABS :
+                            // do nothing
+                            break;
+                        case SVGPathSeg.PATHSEG_LINETO_ABS:
+                            if (lineWithinArea({ start: previousPoint, end: segment }, rect)) {
+                                lineSelection.classed($$.config.selectedClass, true);
+                                return;
+                            }
+                            break;
+                        default:
+                            /*if ()*/ // this default should probably use boundary box for things that are too costly to calculate. Other path segment types will be added above as they are investigated
+                    }
+                    previousPoint = segment;
+                }
+                lineSelection.classed($$.config.selectedClass, false);
+            });
     }
     
     function circleWithinArea(circle, area) {
@@ -215,8 +245,33 @@
     function rectWithinArea(rect, area) {
         return rect.x < (area.x + area.width) &&
                (rect.x + rect.width) > area.x &&
-               rect.y < (area.y - area.height) &&
-               (rect.y - rect.height) > area.y;
+               rect.y < (area.y + area.height) &&
+               (rect.y + rect.height) > area.y;
+    }
+    
+    function lineWithinArea(line, area) {
+        var rectLines = [];
+        rectLines.push({ start: { x: area.x, y: area.y }, end: { x: area.x + area.width, y: area.y } });
+        rectLines.push({ start: { x: area.x, y: area.y }, end: { x: area.x, y: area.y + area.height } });
+        rectLines.push({ start: { x: area.x, y: area.y + area.height }, end: { x: area.x + area.height, y: area.y + area.height } });
+        rectLines.push({ start: { x: area.x + area.width, y: area.y }, end: { x: area.x + area.height, y: area.y + area.height } });
+        return rectLines.some(function(a) {
+            return lineIntersectsLine(line.start.x, line.start.y, line.end.x, line.end.y, a.start.x, a.start.y, a.end.x, a.end.y);
+        });
+    }
+    
+    function lineIntersectsLine(p0_x, p0_y, p1_x, p1_y, p2_x, p2_y, p3_x, p3_y) {
+        var s1_x, s1_y, s2_x, s2_y;
+            s1_x = p1_x - p0_x;
+            s1_y = p1_y - p0_y;
+            s2_x = p3_x - p2_x;
+            s2_y = p3_y - p2_y;
+        
+        var s, t;
+        s = (-s1_y * (p0_x - p2_x) + s1_x * (p0_y - p2_y)) / (-s2_x * s1_y + s1_x * s2_y);
+        t = ( s2_x * (p0_y - p2_y) - s2_y * (p0_x - p2_x)) / (-s2_x * s1_y + s1_x * s2_y);
+    
+        return (s >= 0 && s <= 1 && t >= 0 && t <= 1);
     }
     
     function pauseEvent(e){
