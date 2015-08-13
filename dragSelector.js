@@ -17,7 +17,7 @@
         this.config.selectFilter = config.selectFilter;
         this.config.selectedClass = config.selectedClass || "";
         this.config.rectangleClass = config.rectangleClass || "";
-        this.config.rectParentNode = (config.rectParentNode && config.rectParentNode.select) ? config.rectParentNode : (config.rectParentNode ? this.d3.select(config.rectParentNode) : null); // make it a d3 selection if it isn't
+        this.config.rectRelativeToNode = (config.rectRelativeToNode && config.rectRelativeToNode.select) ? config.rectRelativeToNode.node() : (config.rectRelativeToNode ? config.rectRelativeToNode : null); // make it a true node if it's a d3 selection
         this.config.onSelect = config.onSelect;
         this.config.onDragStart = config.onDragStart;
         this.config.onDragEnd = config.onDragEnd;
@@ -48,9 +48,9 @@
         this.config.rectangleClass = className;
         return this;
     };
-    fn.rectParentNode = function(node) {
-        if (!arguments.length) return this.config.rectParentNode;
-        this.config.rectParentNode = node;
+    fn.rectRelativeToNode = function(node) {
+        if (!arguments.length) return this.config.rectRelativeToNode;
+        this.config.rectRelativeToNode = node.select ? node.node() : node;
         return this;
     };
     fn.onSelect = function(cb) {
@@ -100,21 +100,22 @@
                 targets = node.selectAll($$.config.selectFilter || $$.config.selectNode); // else reset - we search all
             }
             if (rect) rect.remove();
-            var point = $$.d3.mouse(this);
+            var point = $$.d3.mouse($$.config.rectRelativeToNode || this);
             if ($$.config.onDragStart) $$.config.onDragStart(); // .call? if yes, what scope?
-            rect = ($$.config.rectParentNode || node)
+            rect = node
                     .append("rect")
                     .attr("x", point[0])
                     .attr("y", point[1])
                     .attr("width", 0)
                     .attr("height", 0)
+                    .attr("transform", $$.d3.select($$.config.rectRelativeToNode).attr("transform"))
                     .style("pointer-events", "none")
                     .classed($$.config.rectangleClass, $$.config.rectangleClass ? true : false);
         })
         .on("mousemove", function(d, i, a) {
             if (rect && ($$.d3.select(rect.node())) && !rect.empty()) {
                 if ($$.config.preventDragBubbling) pauseEvent($$.d3.event);
-                var update = getUpdatedRect($$.d3.mouse(this), rect);
+                var update = getUpdatedRect($$.d3.mouse($$.config.rectRelativeToNode || this), rect);
                 rect.attr(update);
                 if ($$.config.selectNode === "circle") {
                     circleSearch.call($$, targets, update);
@@ -199,25 +200,41 @@
         targetPath
             .each(function(d, i, a) {
                 var lineSegments = this.pathSegList,
-                    previousPoint = lineSegments[0]/*{ x: .x, y: lineSegments[0].y }*/,
-                    lineSelection = $$.d3.select(this);
-                for (var j = 1, l = lineSegments.length; j < l; j++){
-                    var segment = lineSegments[j];
+                    previousPoint = lineSegments.getItem(0),
+                    curSubPath = lineSegments.getItem(0),
+                    lineSelection = $$.d3.select(this),
+                    originalPath = this.getAttribute("d");
+                for (var j = 1, l = lineSegments.numberOfItems; j < l; j++){
+                    var segment = lineSegments.getItem(j);
                     switch (segment.pathSegType) {
                         case SVGPathSeg.PATHSEG_MOVETO_ABS :
                             // do nothing
+                            curSubPath = segment;
                             break;
                         case SVGPathSeg.PATHSEG_LINETO_ABS:
                             if (lineWithinArea({ start: previousPoint, end: segment }, rect)) {
                                 lineSelection.classed($$.config.selectedClass, true);
+                                this.setAttribute("d", originalPath);
+                                return;
+                            }
+                            break;
+                        case SVGPathSeg.PATHSEG_CLOSEPATH:
+                            if (lineWithinArea({ start: previousPoint, end: curSubPath }, rect)) {
+                                lineSelection.classed($$.config.selectedClass, true);
+                                this.setAttribute("d", originalPath);
                                 return;
                             }
                             break;
                         default:
-                            /*if ()*/ // this default should probably use boundary box for things that are too costly to calculate. Other path segment types will be added above as they are investigated
+                            var sampledLines = getResampledLine(this.cloneNode(), previousPoint, segment);
+                            if (sampledLines.some(function(e) { return lineWithinArea(e, rect); })) {// this default should probably use boundary box for things that are too costly to calculate. Other path segment types will be added above as they are investigated
+                                lineSelection.classed($$.config.selectedClass, true);
+                                return;
+                            }
                     }
                     previousPoint = segment;
                 }
+                this.setAttribute("d", originalPath);
                 lineSelection.classed($$.config.selectedClass, false);
             });
     }
@@ -249,7 +266,7 @@
                (rect.y + rect.height) > area.y;
     }
     
-    function lineWithinArea(line, area) {
+    /*function lineWithinArea(line, area) {
         var rectLines = [];
         rectLines.push({ start: { x: area.x, y: area.y }, end: { x: area.x + area.width, y: area.y } });
         rectLines.push({ start: { x: area.x, y: area.y }, end: { x: area.x, y: area.y + area.height } });
@@ -266,12 +283,67 @@
             s1_y = p1_y - p0_y;
             s2_x = p3_x - p2_x;
             s2_y = p3_y - p2_y;
-        
         var s, t;
         s = (-s1_y * (p0_x - p2_x) + s1_x * (p0_y - p2_y)) / (-s2_x * s1_y + s1_x * s2_y);
         t = ( s2_x * (p0_y - p2_y) - s2_y * (p0_x - p2_x)) / (-s2_x * s1_y + s1_x * s2_y);
-    
         return (s >= 0 && s <= 1 && t >= 0 && t <= 1);
+    }*/
+    
+    function lineWithinArea(line, area) {
+        var tl = { x: area.x, y: area.y + area.height },
+            tr = { x: area.x + area.width, y: area.y + area.height },
+            br = { x: area.x + area.width, y: area.y },
+            bl = { x: area.x, y: area.y };
+        if (cornorsSameSide([tl,tr,br,bl],line.start,line.end) && endProject(line.start, line.end, tl, tr, br, bl)) return true;
+        return false;
+    }
+    
+    function cornorsSameSide(cornorsArr, lineStart, lineEnd) {
+        var xC = lineStart.x - lineEnd.x, 
+            yC = lineEnd.y - lineStart.y, 
+            os = lineEnd.x * lineStart.y - lineStart.x * lineEnd.y,
+            allLessThanZero = true,
+            allMoreThanZero = true;
+        cornorsArr.forEach(function(e) {
+            var v = e.x * yC + e.y * xC + os;
+            allLessThanZero = allLessThanZero && v < 0;
+            allMoreThanZero = allMoreThanZero && v > 0;
+        });
+        return !(allLessThanZero || allMoreThanZero);
+    }
+    
+    function endProject(lineStart, lineEnd, tl, tr, br, bl) {
+        return !(
+            (lineStart.x > tr.x && lineEnd.x > tr.x) ||
+            (lineStart.x < bl.x && lineEnd.x < bl.x) ||
+            (lineStart.y > tr.y && lineEnd.y > tr.y) ||
+            (lineStart.y < bl.y && lineEnd.y < bl.y)
+        );
+    }
+    
+    function getResampledLine(clonedNode, start, segment) {
+        var lines = [],
+            points = [],
+            i = 0, 
+            segmentLength = getSegmentLength(clonedNode, start, segment),
+            precision = 5; // increasing this will degrade performance but will increase the accuracy of the resampling. ** hard coded for the present **
+        points.push(clonedNode.getPointAtLength(0));
+        while ((i+=(1/precision)) <= 1) {
+            var curPoint = clonedNode.getPointAtLength(i * segmentLength),
+                pi = points.length - 1;
+            lines.push({ start: { x: points[pi].x, y: points[pi].y }, end: { x: curPoint.x, y: curPoint.y }});
+            points.push(curPoint);
+        }
+        return lines;
+    }
+    
+    function getSegmentLength(node, start, segment) {
+        var startPos = { x: start.x || start.x1, y: start.y || start.y1 },
+            startEl = node.createSVGPathSegMovetoAbs(startPos.x, startPos.y);
+        node.pathSegList.clear();
+        node.pathSegList.appendItem(startEl);
+        node.pathSegList.appendItem(segment);
+        return node.getTotalLength();
     }
     
     function pauseEvent(e){
@@ -282,6 +354,6 @@
         return false;
     }
     
-    window.d3DragSelector = dragSelector;
+    window.d3dragSelector = dragSelector;
     
 })(window);
