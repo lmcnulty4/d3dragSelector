@@ -21,7 +21,6 @@
         this.config.onSelect = config.onSelect;
         this.config.onDragStart = config.onDragStart;
         this.config.onDragEnd = config.onDragEnd;
-        this.config.onDragStart = config.onDragStart;
         this.config.multiSelectKey = config.multiSelectKey || "ctrl";
         this.config.preventDragBubbling = config.preventDragBubbling === false ? false : true; // default to prevent drag bubbling to stop text highlighting
     }
@@ -227,8 +226,9 @@
                             break;
                         default:
                             var sampledLines = getResampledLine(this.cloneNode(), previousPoint, segment);
-                            if (sampledLines.some(function(e) { return lineWithinArea(e, rect); })) {// this default should probably use boundary box for things that are too costly to calculate. Other path segment types will be added above as they are investigated
+                            if (sampledLines.some(function(e) { return lineWithinArea(e, rect); })) {
                                 lineSelection.classed($$.config.selectedClass, true);
+                                this.setAttribute("d", originalPath);
                                 return;
                             }
                     }
@@ -265,29 +265,6 @@
                rect.y < (area.y + area.height) &&
                (rect.y + rect.height) > area.y;
     }
-    
-    /*function lineWithinArea(line, area) {
-        var rectLines = [];
-        rectLines.push({ start: { x: area.x, y: area.y }, end: { x: area.x + area.width, y: area.y } });
-        rectLines.push({ start: { x: area.x, y: area.y }, end: { x: area.x, y: area.y + area.height } });
-        rectLines.push({ start: { x: area.x, y: area.y + area.height }, end: { x: area.x + area.height, y: area.y + area.height } });
-        rectLines.push({ start: { x: area.x + area.width, y: area.y }, end: { x: area.x + area.height, y: area.y + area.height } });
-        return rectLines.some(function(a) {
-            return lineIntersectsLine(line.start.x, line.start.y, line.end.x, line.end.y, a.start.x, a.start.y, a.end.x, a.end.y);
-        });
-    }
-    
-    function lineIntersectsLine(p0_x, p0_y, p1_x, p1_y, p2_x, p2_y, p3_x, p3_y) {
-        var s1_x, s1_y, s2_x, s2_y;
-            s1_x = p1_x - p0_x;
-            s1_y = p1_y - p0_y;
-            s2_x = p3_x - p2_x;
-            s2_y = p3_y - p2_y;
-        var s, t;
-        s = (-s1_y * (p0_x - p2_x) + s1_x * (p0_y - p2_y)) / (-s2_x * s1_y + s1_x * s2_y);
-        t = ( s2_x * (p0_y - p2_y) - s2_y * (p0_x - p2_x)) / (-s2_x * s1_y + s1_x * s2_y);
-        return (s >= 0 && s <= 1 && t >= 0 && t <= 1);
-    }*/
     
     function lineWithinArea(line, area) {
         var tl = { x: area.x, y: area.y + area.height },
@@ -338,8 +315,9 @@
     }
     
     function getSegmentLength(node, start, segment) {
-        var startPos = { x: start.x || start.x1, y: start.y || start.y1 },
-            startEl = node.createSVGPathSegMovetoAbs(startPos.x, startPos.y);
+        var startX = start.x || start.x1, 
+            startY = start.y || start.y1,
+            startEl = node.createSVGPathSegMovetoAbs(startX, startY);
         node.pathSegList.clear();
         node.pathSegList.appendItem(startEl);
         node.pathSegList.appendItem(segment);
