@@ -19,7 +19,7 @@ var dragSelect = d3dragSelect({ rectangleClass: "selector", selectedClass: "sele
 var dragSelect = d3dragSelect().rectangleClass("selector").selectedClass("selected");
 ```
 
-Once you have set up your instance, apply it to a d3.js selection using .call, like so:
+Once you have set up your instance, apply it to a d3.js selection using .call and the "selector" method, like so:
 
 ```js
 var svg = d3.select("svg");
