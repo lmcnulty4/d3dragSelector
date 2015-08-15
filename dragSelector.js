@@ -88,15 +88,23 @@
     function internalSelectInit(node) {
         var $$ = this,
             rect,
-            targets = node.selectAll($$.config.selectFilter || $$.config.selectNode),
-            currentlyFound = "";
+            nodeSelector = $$.config.selectNode + ($$.config.selectFilter || ""),
+            targets = node.selectAll(nodeSelector),
+            currentlyFound = "",
+            clickedNode;
+        if (!(($$.config.selectNode === "path") || ($$.config.selectNode === "rect") || ($$.config.selectNode === "circle"))) {
+            throw Error("The \"selectNode\" configuration option must be either \"path\", \"rect\" or \"circle\".");
+        }
+        if (!$$.config.selectedClass) {
+            throw Error("The \"selectedClass\" configuration option must be specified and must not be falsy");
+        }
         node.on("mousedown", function(d, i, a) {
             if (($$.config.multiSelectKey === "ctrl" && $$.d3.event.ctrlKey) || 
                 ($$.config.multiSelectKey === "shift" && $$.d3.event.shiftKey) || 
                 ($$.config.multiSelectKey === "alt" && $$.d3.event.altKey)) {
                 targets = targets.filter(":not(." + $$.config.selectedClass + ")"); // set the targets (the things to be searched) to exclude those already selected
             } else {
-                targets = node.selectAll($$.config.selectFilter || $$.config.selectNode); // else reset - we search all
+                targets = node.selectAll(nodeSelector); // else reset - we search all
             }
             if (rect) rect.remove();
             var point = $$.d3.mouse($$.config.rectRelativeToNode || this);
@@ -110,6 +118,14 @@
                     .attr("transform", $$.d3.select($$.config.rectRelativeToNode).attr("transform"))
                     .style("pointer-events", "none")
                     .classed($$.config.rectangleClass, $$.config.rectangleClass ? true : false);
+            if ($$.config.selectNode === "path") { // check whether, when clicking, we are clicking inside a path and hence should select it
+                targets
+                    .each(function(d, i, a) {
+                        if ($$.d3.event.target === this) { // ought this be currentTarget?
+                            clickedNode = $$.d3.select(this);
+                        }
+                    });
+            }
         })
         .on("mousemove", function(d, i, a) {
             if (rect && ($$.d3.select(rect.node())) && !rect.empty()) {
@@ -117,26 +133,30 @@
                 var update = getUpdatedRect($$.d3.mouse($$.config.rectRelativeToNode || this), rect);
                 rect.attr(update);
                 if ($$.config.selectNode === "circle") {
-                    circleSearch.call($$, targets, update);
+                    circleSearch.call($$, targets, update, rect.node());
                 } else if ($$.config.selectNode === "rect") {
-                    rectSearch.call($$, targets, update);
+                    rectSearch.call($$, targets, update, rect.node());
                 } else if ($$.config.selectNode === "path") {
-                    pathSearch.call($$, targets, update);
+                    pathSearch.call($$, targets, update, rect.node());
                 }
-                var found = targets.filter("." + $$.config.selectedClass);
-                var foundIdx = "";
-                found.each(function(d,i) { foundIdx += i; });
-                if (currentlyFound !== foundIdx) {
-                    $$.config.onSelect.call(found, found);
-                    currentlyFound = foundIdx;
+                if (clickedNode) clickedNode.classed($$.config.selectedClass,true);
+                if ($$.config.onSelect) {
+                    var found = node.selectAll(nodeSelector).filter("." + $$.config.selectedClass); // do not filter "targets" here due to "targets" possibly not containing all elements (in case of multiselect)
+                    var foundIdx = "";
+                    found.each(function(d,i) { foundIdx += i; });
+                    if (currentlyFound !== foundIdx) {
+                        $$.config.onSelect.call(found, found);
+                        currentlyFound = foundIdx;
+                    }
                 }
             }
         })
         .on("mouseup", function(d, i, a) {
             if (rect) rect.remove();
             rect = null; // setting to null helps us not enter mousemove event's main body after
+            clickedNode = null;
             if ($$.config.onDragEnd) {
-                var selected = node.selectAll($$.config.selectFilter || $$.config.selectNode).filter("." + $$.config.selectedClass);
+                var selected = node.selectAll(nodeSelector).filter("." + $$.config.selectedClass); // do not filter "targets" here due to "targets" possibly not containing all elements (in case of multiselect)
                 $$.config.onDragEnd.call(selected, selected);
             }
         });
@@ -153,27 +173,33 @@
             x: point[0] - update.x,
             y: point[1] - update.y
         };
-        if (movement.x < 1 || movement.x * 2 < update.width) { // did it move right?
+        if (movement.x < 1 || movement.x * 2 < update.width) { // is it left of clickpoint
             update.x = point[0];
             update.width -= movement.x;
-        } else { // else it moved left
+        } else { // no, it's right of clickpoint
             update.width = movement.x;
         }
-        if (movement.y < 1 || movement.y * 2 < update.height) { // did it move up?
+        if (movement.y < 1 || movement.y * 2 < update.height) { // is it abnove clickpoint?
             update.y = point[1];
             update.height -= movement.y;
-        } else { // no, it moved down
+        } else { // no, it's below clickpoint'
             update.height = movement.y;
         }
         return update;
     }
     
-    function circleSearch(targetCircles, rect) {
+    function applyCTMtoRect(CTMmatrix, rect) {
+        var xt = CTMmatrix.e + rect.x*CTMmatrix.a,
+            yt = CTMmatrix.f + rect.y*CTMmatrix.d;
+        return { x: xt, y: yt, width: rect.width * CTMmatrix.a, height: rect.height * CTMmatrix.d };
+    }
+    
+    function circleSearch(targetCircles, rect, rectNode) {
         var $$ = this;
         targetCircles
             .each(function(d, i, a) {
                 var thisCircle = $$.d3.select(this);
-                if (circleWithinArea({ x: thisCircle.attr("cx"), y: thisCircle.attr("cy"), r: thisCircle.attr("r") }, rect)) {
+                if (circleWithinArea({ x: thisCircle.attr("cx"), y: thisCircle.attr("cy"), r: thisCircle.attr("r") }, applyCTMtoRect(rectNode.getTransformToElement(this), rect))) {
                     thisCircle.classed($$.config.selectedClass, true);
                 } else {
                    thisCircle.classed($$.config.selectedClass, false);
@@ -181,12 +207,16 @@
         });
     }
     
-    function rectSearch(targetRects, rect) {
+    function rectSearch(targetRects, rect, rectNode) {
         var $$ = this;
         targetRects
             .each(function(d, i, a) {
                 var thisRect = $$.d3.select(this);
-                if (rectWithinArea({ x: parseInt(thisRect.attr("x"), 10), y: parseInt(thisRect.attr("y"), 10), width: parseInt(thisRect.attr("width"), 10), height: parseInt(thisRect.attr("height"), 10) }, rect)) {
+                if (rectWithinArea(
+                        { x: parseInt(thisRect.attr("x"), 10), y: parseInt(thisRect.attr("y"), 10), width: parseInt(thisRect.attr("width"), 10), height: parseInt(thisRect.attr("height"), 10) }, 
+                        applyCTMtoRect(rectNode.getTransformToElement(this), rect)
+                    )
+                   ) {
                     thisRect.classed($$.config.selectedClass, true);
                 } else {
                     thisRect.classed($$.config.selectedClass, false);
@@ -194,10 +224,15 @@
         });
     }
     
-    function pathSearch(targetPath, rect) {
+    function pathSearch(targetPath, rect, rectNode) {
         var $$ = this;
         targetPath
             .each(function(d, i, a) {
+                var xformRect = applyCTMtoRect(rectNode.getTransformToElement(this), rect);
+                if (!rectWithinArea(this.getBBox(),xformRect)) { // if it isn't within the boundary box, don't bother scanning
+                    $$.d3.select(this).classed($$.config.selectedClass, false);
+                    return;
+                }
                 var lineSegments = this.pathSegList,
                     previousPoint = lineSegments.getItem(0),
                     curSubPath = lineSegments.getItem(0),
@@ -207,18 +242,17 @@
                     var segment = lineSegments.getItem(j);
                     switch (segment.pathSegType) {
                         case SVGPathSeg.PATHSEG_MOVETO_ABS :
-                            // do nothing
                             curSubPath = segment;
                             break;
                         case SVGPathSeg.PATHSEG_LINETO_ABS:
-                            if (lineWithinArea({ start: previousPoint, end: segment }, rect)) {
+                            if (lineWithinArea({ start: previousPoint, end: segment }, xformRect)) {
                                 lineSelection.classed($$.config.selectedClass, true);
                                 this.setAttribute("d", originalPath);
                                 return;
                             }
                             break;
                         case SVGPathSeg.PATHSEG_CLOSEPATH:
-                            if (lineWithinArea({ start: previousPoint, end: curSubPath }, rect)) {
+                            if (lineWithinArea({ start: previousPoint, end: curSubPath }, xformRect)) {
                                 lineSelection.classed($$.config.selectedClass, true);
                                 this.setAttribute("d", originalPath);
                                 return;
@@ -226,7 +260,7 @@
                             break;
                         default:
                             var sampledLines = getResampledLine(this.cloneNode(), previousPoint, segment);
-                            if (sampledLines.some(function(e) { return lineWithinArea(e, rect); })) {
+                            if (sampledLines.some(function(e) { return lineWithinArea(e, xformRect); })) {
                                 lineSelection.classed($$.config.selectedClass, true);
                                 this.setAttribute("d", originalPath);
                                 return;
@@ -315,8 +349,8 @@
     }
     
     function getSegmentLength(node, start, segment) {
-        var startX = start.x || start.x1, 
-            startY = start.y || start.y1,
+        var startX = typeof start.x !== 'undefined' ? start.x : start.x1, 
+            startY = typeof start.y !== 'undefined' ? start.y : start.y1,
             startEl = node.createSVGPathSegMovetoAbs(startX, startY);
         node.pathSegList.clear();
         node.pathSegList.appendItem(startEl);
