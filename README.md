@@ -53,7 +53,7 @@ If supplied, only elements matching the filter will be scanned. For example, if 
 
 The class to be applied to the dragging rectangle.
 
-### **_rectRelativeToNode_**
+### **_rectTranslateNode_**
 
 The node which contains a transform which should be applied to the dragging rectangle. Frequently when drawing pie charts and geographic maps, a transform is applied to a svg:g element in order change the origin point to be a more natural position (usually the centre). In cases like this, pass in the svg:g element, either as a document node or d3 selection, and the same transformation will be applied to the dragging rectangle.
 
