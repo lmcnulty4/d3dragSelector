@@ -17,7 +17,7 @@
         this.config.selectFilter = config.selectFilter;
         this.config.selectedClass = config.selectedClass || "";
         this.config.rectangleClass = config.rectangleClass || "";
-        this.config.rectRelativeToNode = (config.rectRelativeToNode && config.rectRelativeToNode.select) ? config.rectRelativeToNode.node() : (config.rectRelativeToNode ? config.rectRelativeToNode : null); // make it a true node if it's a d3 selection
+        this.config.rectTranslateNode = (config.rectTranslateNode && config.rectTranslateNode.select) ? config.rectTranslateNode.node() : config.rectTranslateNode;
         this.config.onSelect = config.onSelect;
         this.config.onDragStart = config.onDragStart;
         this.config.onDragEnd = config.onDragEnd;
@@ -47,9 +47,9 @@
         this.config.rectangleClass = className;
         return this;
     };
-    fn.rectRelativeToNode = function(node) {
-        if (!arguments.length) return this.config.rectRelativeToNode;
-        this.config.rectRelativeToNode = node.select ? node.node() : node;
+    fn.rectTranslateNode = function(node) {
+        if (!arguments.length) return this.config.rectTranslateNode;
+        this.config.rectTranslateNode = (node && node.select) ? node.node() : node;
         return this;
     };
     fn.onSelect = function(cb) {
@@ -80,6 +80,12 @@
     
     fn.selector = function() {
         var $$ = this;
+        if (!(($$.config.selectNode === "path") || ($$.config.selectNode === "rect") || ($$.config.selectNode === "circle"))) {
+            throw Error("The \"selectNode\" configuration option must be either \"path\", \"rect\" or \"circle\".");
+        }
+        if (!$$.config.selectedClass) {
+            throw Error("The \"selectedClass\" configuration option must be specified and must not be falsy");
+        }
         return function(node) {
             internalSelectInit.call($$, node);
         };
@@ -92,12 +98,6 @@
             targets = node.selectAll(nodeSelector),
             currentlyFound = "",
             clickedNode;
-        if (!(($$.config.selectNode === "path") || ($$.config.selectNode === "rect") || ($$.config.selectNode === "circle"))) {
-            throw Error("The \"selectNode\" configuration option must be either \"path\", \"rect\" or \"circle\".");
-        }
-        if (!$$.config.selectedClass) {
-            throw Error("The \"selectedClass\" configuration option must be specified and must not be falsy");
-        }
         node.on("mousedown", function(d, i, a) {
             if (($$.config.multiSelectKey === "ctrl" && $$.d3.event.ctrlKey) || 
                 ($$.config.multiSelectKey === "shift" && $$.d3.event.shiftKey) || 
@@ -107,7 +107,7 @@
                 targets = node.selectAll(nodeSelector); // else reset - we search all
             }
             if (rect) rect.remove();
-            var point = $$.d3.mouse($$.config.rectRelativeToNode || this);
+            var point = $$.d3.mouse($$.config.rectTranslateNode || this);
             if ($$.config.onDragStart) $$.config.onDragStart(); // .call? if yes, what scope?
             rect = node
                     .append("rect")
@@ -115,7 +115,7 @@
                     .attr("y", point[1])
                     .attr("width", 0)
                     .attr("height", 0)
-                    .attr("transform", $$.d3.select($$.config.rectRelativeToNode).attr("transform"))
+                    .attr("transform", $$.d3.select($$.config.rectTranslateNode).attr("transform"))
                     .style("pointer-events", "none")
                     .classed($$.config.rectangleClass, $$.config.rectangleClass ? true : false);
             if ($$.config.selectNode === "path") { // check whether, when clicking, we are clicking inside a path and hence should select it
@@ -130,7 +130,7 @@
         .on("mousemove", function(d, i, a) {
             if (rect && ($$.d3.select(rect.node())) && !rect.empty()) {
                 if ($$.config.preventDragBubbling) pauseEvent($$.d3.event);
-                var update = getUpdatedRect($$.d3.mouse($$.config.rectRelativeToNode || this), rect);
+                var update = getUpdatedRect($$.d3.mouse($$.config.rectTranslateNode || this), rect);
                 rect.attr(update);
                 if ($$.config.selectNode === "circle") {
                     circleSearch.call($$, targets, update, rect.node());
