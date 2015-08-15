@@ -97,7 +97,8 @@
             nodeSelector = $$.config.selectNode + ($$.config.selectFilter || ""),
             targets = node.selectAll(nodeSelector),
             currentlyFound = "",
-            clickedNode;
+            clickedNode,
+            scan = true;
         node.on("mousedown", function(d, i, a) {
             if (($$.config.multiSelectKey === "ctrl" && $$.d3.event.ctrlKey) || 
                 ($$.config.multiSelectKey === "shift" && $$.d3.event.shiftKey) || 
@@ -115,7 +116,7 @@
                     .attr("y", point[1])
                     .attr("width", 0)
                     .attr("height", 0)
-                    .attr("transform", $$.d3.select($$.config.rectTranslateNode).attr("transform"))
+                    .attr("transform", $$.config.rectTranslateNode ? $$.d3.select($$.config.rectTranslateNode).attr("transform") : "translate(0,0)")
                     .style("pointer-events", "none")
                     .classed($$.config.rectangleClass, $$.config.rectangleClass ? true : false);
             if ($$.config.selectNode === "path") { // check whether, when clicking, we are clicking inside a path and hence should select it
@@ -130,8 +131,11 @@
         .on("mousemove", function(d, i, a) {
             if (rect && ($$.d3.select(rect.node())) && !rect.empty()) {
                 if ($$.config.preventDragBubbling) pauseEvent($$.d3.event);
+                console.log($$.d3.mouse($$.config.rectTranslateNode || this));
+                console.log($$.d3.event);
                 var update = getUpdatedRect($$.d3.mouse($$.config.rectTranslateNode || this), rect);
                 rect.attr(update);
+                if ((scan = !scan)) return; // scan only every other event - this is fine due to frequency that this event occurs
                 if ($$.config.selectNode === "circle") {
                     circleSearch.call($$, targets, update, rect.node());
                 } else if ($$.config.selectNode === "rect") {
@@ -164,10 +168,10 @@
     
     function getUpdatedRect(point, rect) {
         var update = {
-            x:      parseInt(rect.attr("x"), 10),
-            y:      parseInt(rect.attr("y"), 10),
-            width:  parseInt(rect.attr("width"), 10),
-            height: parseInt(rect.attr("height"), 10)
+            x:      rect.attr("x")|0,
+            y:      rect.attr("y")|0,
+            width:  rect.attr("width")|0,
+            height: rect.attr("height")|0
         },
         movement = {
             x: point[0] - update.x,
@@ -237,8 +241,9 @@
                     previousPoint = lineSegments.getItem(0),
                     curSubPath = lineSegments.getItem(0),
                     lineSelection = $$.d3.select(this),
-                    originalPath = this.getAttribute("d");
-                for (var j = 1, l = lineSegments.numberOfItems; j < l; j++){
+                    originalPath = this.getAttribute("d"),
+                    l = lineSegments.numberOfItems, j = 0;
+                while (++j < l) {
                     var segment = lineSegments.getItem(j);
                     switch (segment.pathSegType) {
                         case SVGPathSeg.PATHSEG_MOVETO_ABS :
@@ -305,7 +310,7 @@
             tr = { x: area.x + area.width, y: area.y + area.height },
             br = { x: area.x + area.width, y: area.y },
             bl = { x: area.x, y: area.y };
-        if (cornorsSameSide([tl,tr,br,bl],line.start,line.end) && endProject(line.start, line.end, tl, tr, br, bl)) return true;
+        if (cornorsSameSide([bl,br,tr,tl],line.start,line.end) && endProject(line.start, line.end, tl, tr, br, bl)) return true; // pass the cornors in array from bottom left c-clockwise to top left
         return false;
     }
     
@@ -314,12 +319,13 @@
             yC = lineEnd.y - lineStart.y, 
             os = lineEnd.x * lineStart.y - lineStart.x * lineEnd.y,
             allLessThanZero = true,
-            allMoreThanZero = true;
-        cornorsArr.forEach(function(e) {
-            var v = e.x * yC + e.y * xC + os;
+            allMoreThanZero = true,
+            i = 4;
+        while (--i) {
+            var v = cornorsArr[i].x * yC + cornorsArr[i].y * xC + os;
             allLessThanZero = allLessThanZero && v < 0;
             allMoreThanZero = allMoreThanZero && v > 0;
-        });
+        }
         return !(allLessThanZero || allMoreThanZero);
     }
     
@@ -337,7 +343,7 @@
             points = [],
             i = 0, 
             segmentLength = getSegmentLength(clonedNode, start, segment),
-            precision = 5; // increasing this will degrade performance but will increase the accuracy of the resampling. ** hard coded for the present **
+            precision = 8; // increasing this will degrade performance but will increase the accuracy of the resampling. ** hard coded for the present **
         points.push(clonedNode.getPointAtLength(0));
         while ((i+=(1/precision)) <= 1) {
             var curPoint = clonedNode.getPointAtLength(i * segmentLength),
