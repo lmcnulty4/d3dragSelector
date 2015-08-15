@@ -131,8 +131,6 @@
         .on("mousemove", function(d, i, a) {
             if (rect && ($$.d3.select(rect.node())) && !rect.empty()) {
                 if ($$.config.preventDragBubbling) pauseEvent($$.d3.event);
-                console.log($$.d3.mouse($$.config.rectTranslateNode || this));
-                console.log($$.d3.event);
                 var update = getUpdatedRect($$.d3.mouse($$.config.rectTranslateNode || this), rect);
                 rect.attr(update);
                 if ((scan = !scan)) return; // scan only every other event - this is fine due to frequency that this event occurs
