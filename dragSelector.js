@@ -98,7 +98,7 @@
             targets = node.selectAll(nodeSelector),
             currentlyFound = "",
             clickedNode,
-            scan = true;
+            scan = 0;
         node.on("mousedown", function(d, i, a) {
             if (($$.config.multiSelectKey === "ctrl" && $$.d3.event.ctrlKey) || 
                 ($$.config.multiSelectKey === "shift" && $$.d3.event.shiftKey) || 
@@ -129,11 +129,14 @@
             }
         })
         .on("mousemove", function(d, i, a) {
-            if (rect && ($$.d3.select(rect.node())) && !rect.empty()) {
+            if (rect) {
                 if ($$.config.preventDragBubbling) pauseEvent($$.d3.event);
                 var update = getUpdatedRect($$.d3.mouse($$.config.rectTranslateNode || this), rect);
                 rect.attr(update);
-                if ((scan = !scan)) return; // scan only every other event - this is fine due to frequency that this event occurs
+                if ((scan++ === 4)) { 
+                    scan = 0;
+                    return; // scan only every 4th event - this is fine due to frequency that this event occurs
+                }
                 if ($$.config.selectNode === "circle") {
                     circleSearch.call($$, targets, update, rect.node());
                 } else if ($$.config.selectNode === "rect") {
@@ -181,7 +184,7 @@
         } else { // no, it's right of clickpoint
             update.width = movement.x;
         }
-        if (movement.y < 1 || movement.y * 2 < update.height) { // is it abnove clickpoint?
+        if (movement.y < 1 || movement.y * 2 < update.height) { // is it above clickpoint?
             update.y = point[1];
             update.height -= movement.y;
         } else { // no, it's below clickpoint'
@@ -190,10 +193,12 @@
         return update;
     }
     
-    function applyCTMtoRect(CTMmatrix, rect) {
-        var xt = CTMmatrix.e + rect.x*CTMmatrix.a,
-            yt = CTMmatrix.f + rect.y*CTMmatrix.d;
-        return { x: xt, y: yt, width: rect.width * CTMmatrix.a, height: rect.height * CTMmatrix.d };
+    // This function is a fast and lazy approximation - for the purposes of what this tool is designed for, it works
+    // It will not universally work - e.g. it works with translations, but not rotations or skews
+    function applyMatrixTransformToRect(CTMmatrix, rect) {
+        var xt = CTMmatrix.e + rect.x*CTMmatrix.a + rect.y*CTMmatrix.c,
+            yt = CTMmatrix.f + rect.y*CTMmatrix.d + rect.x*CTMmatrix.b;
+        return { x: xt, y: yt, width: rect.width * CTMmatrix.a, height: rect.height * CTMmatrix.d }; // width and height do not take rotation into account here...
     }
     
     function circleSearch(targetCircles, rect, rectNode) {
@@ -201,7 +206,7 @@
         targetCircles
             .each(function(d, i, a) {
                 var thisCircle = $$.d3.select(this);
-                if (circleWithinArea({ x: thisCircle.attr("cx"), y: thisCircle.attr("cy"), r: thisCircle.attr("r") }, applyCTMtoRect(rectNode.getTransformToElement(this), rect))) {
+                if (circleWithinArea({ x: thisCircle.attr("cx"), y: thisCircle.attr("cy"), r: thisCircle.attr("r") }, applyMatrixTransformToRect(rectNode.getTransformToElement(this), rect))) {
                     thisCircle.classed($$.config.selectedClass, true);
                 } else {
                    thisCircle.classed($$.config.selectedClass, false);
@@ -214,10 +219,10 @@
         targetRects
             .each(function(d, i, a) {
                 var thisRect = $$.d3.select(this);
-                if (rectWithinArea(
-                        { x: parseInt(thisRect.attr("x"), 10), y: parseInt(thisRect.attr("y"), 10), width: parseInt(thisRect.attr("width"), 10), height: parseInt(thisRect.attr("height"), 10) }, 
-                        applyCTMtoRect(rectNode.getTransformToElement(this), rect)
-                    )
+                if (rectWithinArea( 
+                        { x: thisRect.attr("x")|0, y: thisRect.attr("y")|0, width: thisRect.attr("width")|0, height: thisRect.attr("height")|0 },
+                        applyMatrixTransformToRect(rectNode.getTransformToElement(this), rect)
+                        )
                    ) {
                     thisRect.classed($$.config.selectedClass, true);
                 } else {
@@ -230,7 +235,7 @@
         var $$ = this;
         targetPath
             .each(function(d, i, a) {
-                var xformRect = applyCTMtoRect(rectNode.getTransformToElement(this), rect);
+                var xformRect = applyMatrixTransformToRect(rectNode.getTransformToElement(this), rect);
                 if (!rectWithinArea(this.getBBox(),xformRect)) { // if it isn't within the boundary box, don't bother scanning
                     $$.d3.select(this).classed($$.config.selectedClass, false);
                     return;
@@ -239,7 +244,6 @@
                     previousPoint = lineSegments.getItem(0),
                     curSubPath = lineSegments.getItem(0),
                     lineSelection = $$.d3.select(this),
-                    originalPath = this.getAttribute("d"),
                     l = lineSegments.numberOfItems, j = 0;
                 while (++j < l) {
                     var segment = lineSegments.getItem(j);
@@ -250,14 +254,12 @@
                         case SVGPathSeg.PATHSEG_LINETO_ABS:
                             if (lineWithinArea({ start: previousPoint, end: segment }, xformRect)) {
                                 lineSelection.classed($$.config.selectedClass, true);
-                                this.setAttribute("d", originalPath);
                                 return;
                             }
                             break;
                         case SVGPathSeg.PATHSEG_CLOSEPATH:
                             if (lineWithinArea({ start: previousPoint, end: curSubPath }, xformRect)) {
                                 lineSelection.classed($$.config.selectedClass, true);
-                                this.setAttribute("d", originalPath);
                                 return;
                             }
                             break;
@@ -265,13 +267,11 @@
                             var sampledLines = getResampledLine(this.cloneNode(), previousPoint, segment);
                             if (sampledLines.some(function(e) { return lineWithinArea(e, xformRect); })) {
                                 lineSelection.classed($$.config.selectedClass, true);
-                                this.setAttribute("d", originalPath);
                                 return;
                             }
                     }
                     previousPoint = segment;
                 }
-                this.setAttribute("d", originalPath);
                 lineSelection.classed($$.config.selectedClass, false);
             });
     }
@@ -308,32 +308,45 @@
             tr = { x: area.x + area.width, y: area.y + area.height },
             br = { x: area.x + area.width, y: area.y },
             bl = { x: area.x, y: area.y };
-        if (cornorsSameSide([bl,br,tr,tl],line.start,line.end) && endProject(line.start, line.end, tl, tr, br, bl)) return true; // pass the cornors in array from bottom left c-clockwise to top left
-        return false;
+        return (endProject(line.start, line.end, tl, tr, br, bl) && cornersSameSide([bl,br,tr,tl],line.start,line.end)); // pass the cornors in array from bottom left c-clockwise to top left
     }
     
-    function cornorsSameSide(cornorsArr, lineStart, lineEnd) {
+    function cornersSameSide(cornorsArr, lineStart, lineEnd) {
         var xC = lineStart.x - lineEnd.x, 
             yC = lineEnd.y - lineStart.y, 
             os = lineEnd.x * lineStart.y - lineStart.x * lineEnd.y,
-            allLessThanZero = true,
-            allMoreThanZero = true,
-            i = 4;
-        while (--i) {
-            var v = cornorsArr[i].x * yC + cornorsArr[i].y * xC + os;
-            allLessThanZero = allLessThanZero && v < 0;
-            allMoreThanZero = allMoreThanZero && v > 0;
+            v = cornorsArr[3].x * yC + cornorsArr[3].y * xC + os,
+            sign = (v < 0 ? -1 : (v > 0 ? 1 : 0)), 
+            i = 3;
+        if (v < 0) {
+            sign = -1; 
         }
-        return !(allLessThanZero || allMoreThanZero);
+        else if (v > 0) {
+            sign = 1; 
+        }
+        else {
+            sign = 0;
+        }
+        while (i--) {
+            v = cornorsArr[i].x * yC + cornorsArr[i].y * xC + os;
+            if (v<0) {
+                if (sign>0) {
+                    return true;
+                }
+            } else if (v>0) {
+                if (sign < 0) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
-    
     function endProject(lineStart, lineEnd, tl, tr, br, bl) {
-        return !(
-            (lineStart.x > tr.x && lineEnd.x > tr.x) ||
-            (lineStart.x < bl.x && lineEnd.x < bl.x) ||
-            (lineStart.y > tr.y && lineEnd.y > tr.y) ||
-            (lineStart.y < bl.y && lineEnd.y < bl.y)
-        );
+        if (lineStart.y > tr.y && lineEnd.y > tr.y) return false;
+        if (lineStart.y < bl.y && lineEnd.y < bl.y) return false;
+        if (lineStart.x > tr.x && lineEnd.x > tr.x) return false;
+        if (lineStart.x < bl.x && lineEnd.x < bl.x) return false;
+        return true;
     }
     
     function getResampledLine(clonedNode, start, segment) {
