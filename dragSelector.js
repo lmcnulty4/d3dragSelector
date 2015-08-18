@@ -22,7 +22,8 @@
         this.config.onDragStart = config.onDragStart;
         this.config.onDragEnd = config.onDragEnd;
         this.config.multiSelectKey = config.multiSelectKey || "ctrl";
-        this.config.preventDragBubbling = config.preventDragBubbling === false ? false : true; // default to prevent drag bubbling to stop text highlighting
+        this.config.preventDragBubbling = config.preventDragBubbling === true ? true : false; // default to false - do not prevent drag bubbling
+        this.config.bindToHTMLnode = config.bindToHTMLnode === false ? false : true;     // defaults to true - do bind to the HTML node
     }
     
     var fn = DSInternal.prototype;
@@ -77,6 +78,11 @@
         this.config.preventDragBubbling = bool;
         return this;
     };
+    fn.bindToHTMLnode = function(bool) {
+        if (!arguments.length) return this.config.bindToHTMLnode;
+        this.config.bindToHTMLnode = bool;
+        return this;
+    };
     
     fn.selector = function() {
         var $$ = this;
@@ -93,7 +99,6 @@
     
     function internalSelectInit(node) {
         var $$ = this,
-            rect,
             nodeSelector = $$.config.selectNode + ($$.config.selectFilter || ""),
             targets = node.selectAll(nodeSelector),
             currentlyFound = "",
@@ -107,18 +112,12 @@
             } else {
                 targets = node.selectAll(nodeSelector); // else reset - we search all
             }
-            if (rect) rect.remove();
-            var point = $$.d3.mouse($$.config.rectTranslateNode || this);
-            if ($$.config.onDragStart) $$.config.onDragStart(); // .call? if yes, what scope?
-            rect = node
-                    .append("rect")
-                    .attr("x", point[0])
-                    .attr("y", point[1])
-                    .attr("width", 0)
-                    .attr("height", 0)
-                    .attr("transform", $$.config.rectTranslateNode ? $$.d3.select($$.config.rectTranslateNode).attr("transform") : "translate(0,0)")
-                    .style("pointer-events", "none")
-                    .classed($$.config.rectangleClass, $$.config.rectangleClass ? true : false);
+            if ($$.rect) { 
+                $$.rect.remove();
+                delete $$.rect;
+            }
+            $$.rect = new Rect($$.d3.mouse($$.config.rectTranslateNode || this),$$.config.rectTranslateNode ? $$.d3.select($$.config.rectTranslateNode).attr("transform") : "translate(0,0)", $$.config.rectangleClass);
+            $$.rect.appendTo(node);
             if ($$.config.selectNode === "path") { // check whether, when clicking, we are clicking inside a path and hence should select it
                 targets
                     .each(function(d, i, a) {
@@ -127,22 +126,25 @@
                         }
                     });
             }
-        })
+        });
+        (function() {
+            if (!$$.config.bindToHTMLnode) return node;
+            return $$.d3.select("html");
+        })()
         .on("mousemove", function(d, i, a) {
-            if (rect) {
+            if ($$.rect) {
                 if ($$.config.preventDragBubbling) pauseEvent($$.d3.event);
-                var update = getUpdatedRect($$.d3.mouse($$.config.rectTranslateNode || this), rect);
-                rect.attr(update);
+                $$.rect.reDraw($$.d3.mouse($$.config.rectTranslateNode || node.node()));
                 if ((scan++ === 4)) { 
                     scan = 0;
                     return; // scan only every 4th event - this is fine due to frequency that this event occurs
                 }
                 if ($$.config.selectNode === "circle") {
-                    circleSearch.call($$, targets, update, rect.node());
+                    circleSearch.call($$, targets, $$.rect.getDimensions(), $$.rect.node);
                 } else if ($$.config.selectNode === "rect") {
-                    rectSearch.call($$, targets, update, rect.node());
+                    rectSearch.call($$, targets, $$.rect.getDimensions(), $$.rect.node);
                 } else if ($$.config.selectNode === "path") {
-                    pathSearch.call($$, targets, update, rect.node());
+                    pathSearch.call($$, targets, $$.rect.getDimensions(), $$.rect.node);
                 }
                 if (clickedNode) clickedNode.classed($$.config.selectedClass,true);
                 if ($$.config.onSelect) {
@@ -157,41 +159,71 @@
             }
         })
         .on("mouseup", function(d, i, a) {
-            if (rect) rect.remove();
-            rect = null; // setting to null helps us not enter mousemove event's main body after
-            clickedNode = null;
-            if ($$.config.onDragEnd) {
-                var selected = node.selectAll(nodeSelector).filter("." + $$.config.selectedClass); // do not filter "targets" here due to "targets" possibly not containing all elements (in case of multiselect)
-                $$.config.onDragEnd.call(selected, selected);
+            if ($$.rect)  {
+                $$.rect.remove();
+                delete $$.rect; // delete to prevent entering mousemove event's main body after finishing, and this event
+                clickedNode = null;
+                if ($$.config.onDragEnd) {
+                    var selected = node.selectAll(nodeSelector).filter("." + $$.config.selectedClass); // do not filter "targets" here due to "targets" possibly not containing all elements (in case of multiselect)
+                    $$.config.onDragEnd.call(selected, selected);
+                }
             }
         });
     }
     
-    function getUpdatedRect(point, rect) {
-        var update = {
-            x:      rect.attr("x")|0,
-            y:      rect.attr("y")|0,
-            width:  rect.attr("width")|0,
-            height: rect.attr("height")|0
-        },
-        movement = {
-            x: point[0] - update.x,
-            y: point[1] - update.y
-        };
-        if (movement.x < 1 || movement.x * 2 < update.width) { // is it left of clickpoint
-            update.x = point[0];
-            update.width -= movement.x;
-        } else { // no, it's right of clickpoint
-            update.width = movement.x;
-        }
-        if (movement.y < 1 || movement.y * 2 < update.height) { // is it above clickpoint?
-            update.y = point[1];
-            update.height -= movement.y;
-        } else { // no, it's below clickpoint'
-            update.height = movement.y;
-        }
-        return update;
+    function Rect(anchorPoint, transform, className) {
+        this.anchor = { x: anchorPoint[0], y: anchorPoint[1] };
+        this.transform = transform;
+        this.className = className;
+        this.d3 = window.d3;
+        this.dimensions = {};
+        this.node = null;
+        this.selection = null;
     }
+    
+    var r_fn = Rect.prototype;
+    
+    r_fn.getDimensions = function() { 
+        return this.dimensions;
+    };
+    r_fn.remove = function() {
+        this.selection.remove();
+    };
+    r_fn.appendTo = function(node) {
+        var d3Node = (node.select) ? node : this.d3.select(node);
+        this.dimensions.x = this.anchor.x;
+        this.dimensions.y = this.anchor.y;
+        this.dimensions.width = 0;
+        this.dimensions.height = 0;
+        this.selection = d3Node
+                        .append("rect")
+                        .attr(this.dimensions)
+                        .attr("transform", this.transform)
+                        .style("pointer-events", "none !important")
+                        .classed(this.className, true);
+        this.node = this.selection.node();
+    };
+    r_fn.reDraw = function(mouseCoordinates) {
+        var movement = { 
+                x: mouseCoordinates[0] - this.dimensions.x,
+                y: mouseCoordinates[1] - this.dimensions.y
+        };
+        if (movement.x < 1 || movement.x * 2 < this.dimensions.width) {
+            this.dimensions.width = Math.abs(this.anchor.x - mouseCoordinates[0]); // abs stops errors when moving extremely fast
+            this.dimensions.x = mouseCoordinates[0];
+        } else {
+            this.dimensions.x = this.anchor.x;
+            this.dimensions.width = movement.x;
+        }
+        if (movement.y < 1 || movement.y * 2 < this.dimensions.height) {
+            this.dimensions.height = Math.abs(this.anchor.y - mouseCoordinates[1]); // abs stops errors when moving extremely fast
+            this.dimensions.y = mouseCoordinates[1];
+        } else {
+            this.dimensions.y = this.anchor.y;
+            this.dimensions.height = movement.y;
+        }
+        this.selection.attr(this.dimensions);
+    };
     
     // This function is a fast and lazy approximation - for the purposes of what this tool is designed for, it works
     // It will not universally work - e.g. it works with translations, but not rotations or skews
