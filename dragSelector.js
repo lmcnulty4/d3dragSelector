@@ -112,6 +112,7 @@
             } else {
                 targets = node.selectAll(nodeSelector); // else reset - we search all
             }
+            $$.d3.event.preventDefault(); // this prevents text from being selected - this should not be configurable due to how necessary it is
             if ($$.rect) { 
                 $$.rect.remove();
                 delete $$.rect;
