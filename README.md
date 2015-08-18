@@ -8,7 +8,7 @@ This is a small plugin for d3.js to allow for selecting nodes using a selection 
 To use it, simply call it like so:
 
 ```js
-var dragSelector = d3dragSelector();
+var dragSelect = d3dragSelector();
 ```
 
 Configuration can either be passed in as a single object on calling, or by method chaining the particular configurable setting you want to change, like so:
@@ -50,11 +50,9 @@ The class to be applied to elements which are selected by the dragging rectangle
 If supplied, only elements matching the filter will be scanned. For example, if your *selectNode* is "rect", you can pass ".bars" to *selectFilter* and only "rect.bars" will be scanned for.
 
 ### **_rectangleClass_**
-
 The class to be applied to the dragging rectangle.
 
 ### **_rectTranslateNode_**
-
 The node which contains a transform which should be applied to the dragging rectangle. Frequently when drawing pie charts and geographic maps, a transform is applied to a svg:g element in order change the origin point to be a more natural position (usually the centre). In cases like this, pass in the svg:g element, either as a document node or d3 selection, and the same transformation will be applied to the dragging rectangle.
 
 ### **_onSelect_**
@@ -74,6 +72,9 @@ Possible values:
 - "ctrl" (**default**)
 - "alt"
 - "shift"
+
+### **_bindToHTMLnode_**
+A boolean to indicate whether or not to bind to the root HTML node. While dragging the rectangle, if your mouse exits the node to which you have bound the plugin (typically the SVG node), the rectangle does not cease to be responsive. This is because the default behaviour is to the root HTML node's mousemove event. If you wish to override this behaviour, set this configuration value to false. Defaults to *true*.
 
 ### **_preventDragBubbling_**
 A boolean to indicate whether or not to stop the bubbling of the "mousemove" event up the DOM tree. Defaults to *false*.
