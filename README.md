@@ -41,7 +41,7 @@ Possible values:
 - "rect"
 - "circle"
 
-Please note that the plugin does not yet support elements that have been rotated or skewed. It does, however, support elements that have been translated.
+Please note that the plugin does not yet support elements that have been rotated or skewed. It does, however, support elements that have been translated or scaled.
 
 ### **_selectedClass_**
 *Required*
