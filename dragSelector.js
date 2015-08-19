@@ -24,7 +24,7 @@
         this.config.multiSelectKey = config.multiSelectKey || "ctrl";
         this.config.preventDragBubbling = config.preventDragBubbling === true ? true : false; // default to false - do not prevent drag bubbling 
         this.config.bindToWindow = config.bindToWindow === false ? false : true;     // defaults to true - do bind to the window
-        this.config.dblClick = config.dblClick === true ? true : false;     // defaults to false - don't use double click for rect drawing
+        this.config.useDblClick = config.useDblClick === true ? true : false;     // defaults to false - don't use double click for rect drawing
     }
     
     var fn = DSInternal.prototype;
@@ -84,9 +84,9 @@
         this.config.bindToWindow = bool;
         return this;
     };
-    fn.dblClick = function(bool) {
-        if (!arguments.length) return this.config.dblClick;
-        this.config.dblClick = bool;
+    fn.useDblClick = function(bool) {
+        if (!arguments.length) return this.config.useDblClick;
+        this.config.useDblClick = bool;
         return this;
     };
     
@@ -112,14 +112,14 @@
             scan = 0,
             dblClicked = false;
         node.on("mousedown", function(d, i, a) {
-            if ($$.config.dblClick && !dblClicked) {
+            if ($$.config.useDblClick && !dblClicked) {
                 dblClicked = true;
-                setTimeout(function() { dblClicked = false; }, 17);
+                setTimeout(function() { dblClicked = false; }, 300);
                 return;
-            } else if ($$.config.dblClick) {
+            } else if ($$.config.useDblClick) {
                 $$.d3.event.stopImmediatePropagation(); // this prevents other mousedown events firing afterwards on our "node" selection - it is required to prevent panning when using d3.behavior.zoom(), particularly for maps
+                dblClicked = false;
             }
-            dblClicked = false;
             if (($$.config.multiSelectKey === "ctrl" && $$.d3.event.ctrlKey) || 
                 ($$.config.multiSelectKey === "shift" && $$.d3.event.shiftKey) || 
                 ($$.config.multiSelectKey === "alt" && $$.d3.event.altKey)) {
