@@ -23,7 +23,7 @@
         this.config.onDragEnd = config.onDragEnd;
         this.config.multiSelectKey = config.multiSelectKey || "ctrl";
         this.config.preventDragBubbling = config.preventDragBubbling === true ? true : false; // default to false - do not prevent drag bubbling
-        this.config.bindToHTMLnode = config.bindToHTMLnode === false ? false : true;     // defaults to true - do bind to the HTML node
+        this.config.bindToWindow = config.bindToWindow === false ? false : true;     // defaults to true - do bind to the window
     }
     
     var fn = DSInternal.prototype;
@@ -78,16 +78,16 @@
         this.config.preventDragBubbling = bool;
         return this;
     };
-    fn.bindToHTMLnode = function(bool) {
-        if (!arguments.length) return this.config.bindToHTMLnode;
-        this.config.bindToHTMLnode = bool;
+    fn.bindToWindow = function(bool) {
+        if (!arguments.length) return this.config.bindToWindow;
+        this.config.bindToWindow = bool;
         return this;
     };
     
     fn.selector = function() {
         var $$ = this;
-        if (!(($$.config.selectNode === "path") || ($$.config.selectNode === "rect") || ($$.config.selectNode === "circle"))) {
-            throw Error("The \"selectNode\" configuration option must be either \"path\", \"rect\" or \"circle\".");
+        if (!(($$.config.selectNode === "path") || ($$.config.selectNode === "rect") || ($$.config.selectNode === "circle") || ($$.config.selectNode === "line"))) {
+            throw Error("The \"selectNode\" configuration option must be either \"path\", \"rect\", \"circle\" or \"line\".");
         }
         if (!$$.config.selectedClass) {
             throw Error("The \"selectedClass\" configuration option must be specified and must not be falsy");
@@ -129,8 +129,8 @@
             }
         });
         (function() {
-            if (!$$.config.bindToHTMLnode) return node;
-            return $$.d3.select("html");
+            if (!$$.config.bindToWindow) return node;
+            return $$.d3.select(window);
         })()
         .on("mousemove", function(d, i, a) {
             if ($$.rect) {
@@ -146,6 +146,8 @@
                     rectSearch.call($$, targets, $$.rect.getDimensions(), $$.rect.node);
                 } else if ($$.config.selectNode === "path") {
                     pathSearch.call($$, targets, $$.rect.getDimensions(), $$.rect.node);
+                } else if ($$.config.selectNode === "line") {
+                    lineSearch.call($$, targets, $$.rect.getDimensions(), $$.rect.node);
                 }
                 if (clickedNode) clickedNode.classed($$.config.selectedClass,true);
                 if ($$.config.onSelect) {
@@ -260,6 +262,27 @@
                     thisRect.classed($$.config.selectedClass, true);
                 } else {
                     thisRect.classed($$.config.selectedClass, false);
+                }
+        });
+    }
+    
+    function lineSearch(targetLines, rect, rectNode) {
+        var $$ = this;
+        targetLines.each(function(d, i, a) {
+            var xformRect = applyMatrixTransformToRect(rectNode.getTransformToElement(this), rect),
+                lineSelection = $$.d3.select(this);
+            if (!rectWithinArea(this.getBBox(),xformRect)) { // if it isn't within the boundary box, don't bother scanning
+                    lineSelection.classed($$.config.selectedClass, false);
+                    return;
+                }
+                if (lineWithinArea({ 
+                        start: { x: (lineSelection.attr("x1")|0)||0, y: (lineSelection.attr("y1")|0)||0 }, 
+                        end: { x: (lineSelection.attr("x2")|0)||0, y: (lineSelection.attr("y2")|0)||0 } 
+                    }, xformRect)) {
+                    lineSelection.classed($$.config.selectedClass, true);
+                    return;
+                } else {
+                    lineSelection.classed($$.config.selectedClass, false);
                 }
         });
     }
