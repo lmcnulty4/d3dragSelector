@@ -3,6 +3,20 @@
 This is a small plugin for d3.js to allow for selecting nodes using a selection rectangle while clicking and dragging your mouse. The main aim is to assist with dashboarding, providing an easy method of allowing drill down across potentially multiple separate graphs.
 
 ---
+## Demos
+
+Please note that the below demos are all nested within iframes and thus are prone to misbehaving. Please report any bugs you can find!
+
+- [a simple demonstrative bar chart](http://bl.ocks.org/lmcnulty4/f522f553679580a5690c)
+- [with circles, demonstrating the accuracy of the rectangle](http://bl.ocks.org/lmcnulty4/f809dea8acfa5b28cf58) 
+- [a map](http://bl.ocks.org/lmcnulty4/f1a25a9458b698f8b09f)
+- [a zoomable, pannable map](http://bl.ocks.org/lmcnulty4/8f67ae7b4e01ca2dcb8a)
+
+Note that, for the maps, Chrome is recommended for performance reasons, or if you're very attached to Firefox, then Firefox Nightly has significant improvements over vanilla Firefox. Microsoft's new Edge is also lacking, though hopefully the browser wars will continue due to Edge. 
+
+Further note that the topoJSON used in the above demos produces maps which resolve to 50 sqm. Another common topoJSON file exists which produces maps resolving to 110 sqm, which results in significant performance gains, though producing a less detailed map.
+
+---
 
 ## Instructions
 To use it, simply call it like so:
