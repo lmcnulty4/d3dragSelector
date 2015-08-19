@@ -22,8 +22,9 @@
         this.config.onDragStart = config.onDragStart;
         this.config.onDragEnd = config.onDragEnd;
         this.config.multiSelectKey = config.multiSelectKey || "ctrl";
-        this.config.preventDragBubbling = config.preventDragBubbling === true ? true : false; // default to false - do not prevent drag bubbling
+        this.config.preventDragBubbling = config.preventDragBubbling === true ? true : false; // default to false - do not prevent drag bubbling 
         this.config.bindToWindow = config.bindToWindow === false ? false : true;     // defaults to true - do bind to the window
+        this.config.dblClick = config.dblClick === true ? true : false;     // defaults to false - don't use double click for rect drawing
     }
     
     var fn = DSInternal.prototype;
@@ -83,6 +84,11 @@
         this.config.bindToWindow = bool;
         return this;
     };
+    fn.dblClick = function(bool) {
+        if (!arguments.length) return this.config.dblClick;
+        this.config.dblClick = bool;
+        return this;
+    };
     
     fn.selector = function() {
         var $$ = this;
@@ -103,8 +109,17 @@
             targets = node.selectAll(nodeSelector),
             currentlyFound = "",
             clickedNode,
-            scan = 0;
+            scan = 0,
+            dblClicked = false;
         node.on("mousedown", function(d, i, a) {
+            if ($$.config.dblClick && !dblClicked) {
+                dblClicked = true;
+                setTimeout(function() { dblClicked = false; }, 17);
+                return;
+            } else if ($$.config.dblClick) {
+                $$.d3.event.stopImmediatePropagation(); // this prevents other mousedown events firing afterwards on our "node" selection - it is required to prevent panning when using d3.behavior.zoom(), particularly for maps
+            }
+            dblClicked = false;
             if (($$.config.multiSelectKey === "ctrl" && $$.d3.event.ctrlKey) || 
                 ($$.config.multiSelectKey === "shift" && $$.d3.event.shiftKey) || 
                 ($$.config.multiSelectKey === "alt" && $$.d3.event.altKey)) {
@@ -117,6 +132,7 @@
                 $$.rect.remove();
                 delete $$.rect;
             }
+            if ($$.config.onDragStart) $$.config.onDragStart.call(this);
             $$.rect = new Rect($$.d3.mouse($$.config.rectTranslateNode || this),$$.config.rectTranslateNode ? $$.d3.select($$.config.rectTranslateNode).attr("transform") : "translate(0,0)", $$.config.rectangleClass);
             $$.rect.appendTo(node);
             if ($$.config.selectNode === "path") { // check whether, when clicking, we are clicking inside a path and hence should select it
