@@ -40,8 +40,10 @@ Possible values:
 - "path"
 - "rect"
 - "circle"
+- "line"
 
-Please note that the plugin does not yet support elements that have been rotated or skewed. It does, however, support elements that have been translated or scaled.
+**Please note that the plugin does not yet support elements that have been rotated or skewed. 
+It does, however, support elements that have been translated or scaled.**
 
 ### **_selectedClass_**
 *Required*
@@ -75,8 +77,8 @@ Possible values:
 - "alt"
 - "shift"
 
-### **_bindToHTMLnode_**
-A boolean to indicate whether or not to bind to the root HTML node. While dragging the rectangle, if your mouse exits the node to which you have bound the plugin (typically the SVG node), the rectangle does not cease to be responsive. This is because the default behaviour is to bind to the root HTML node's mousemove event. If you wish to override this behaviour, set this configuration value to false. Defaults to *true*.
+### **_bindToWindow_**
+A boolean to indicate whether or not to bind to the window's mousemove event. While dragging the rectangle, if your mouse exits the node to which you have bound the plugin (typically the SVG node), the rectangle does not cease to be responsive. This is because the default behaviour is to bind to the window's mousemove event. If you wish to override this behaviour, set this configuration value to false. Defaults to *true*.
 
 ### **_preventDragBubbling_**
 A boolean to indicate whether or not to stop the bubbling of the "mousemove" event up the DOM tree. Defaults to *false*.
