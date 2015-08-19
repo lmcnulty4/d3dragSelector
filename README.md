@@ -80,6 +80,10 @@ Possible values:
 ### **_bindToWindow_**
 A boolean to indicate whether or not to bind to the window's mousemove event. While dragging the rectangle, if your mouse exits the node to which you have bound the plugin (typically the SVG node), the rectangle does not cease to be responsive. This is because the default behaviour is to bind to the window's mousemove event. If you wish to override this behaviour, set this configuration value to false. Defaults to *true*.
 
+
+### **_useDblClick_**
+A boolean to indicate whether or not to use double clicks, instead of single clicks, to start dragging the rectangle. This is particularly useful, and recommended, when used with a map that has zooming and panning, allowing panning  Defaults to *false*.
+
 ### **_preventDragBubbling_**
 A boolean to indicate whether or not to stop the bubbling of the "mousemove" event up the DOM tree. Defaults to *false*.
 
