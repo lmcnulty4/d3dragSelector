@@ -107,7 +107,7 @@
         var $$ = this,
             nodeSelector = $$.config.selectNode + ($$.config.selectFilter || ""),
             targets = node.selectAll(nodeSelector),
-            currentlyFound = "",
+            currentSelection,
             clickedNode,
             scan = 0,
             dblClicked = false;
@@ -143,6 +143,7 @@
                         }
                     });
             }
+            currentSelection = $$.d3.select(null);
         });
         (function() {
             if (!$$.config.bindToWindow) return node;
@@ -152,7 +153,7 @@
             if ($$.rect) {
                 if ($$.config.preventDragBubbling) pauseEvent($$.d3.event);
                 $$.rect.reDraw($$.d3.mouse($$.config.rectTranslateNode || node.node()));
-                if ((scan++ === 4)) { 
+                if ((scan++ === 5)) { 
                     scan = 0;
                     return; // scan only every 4th event - this is fine due to frequency that this event occurs
                 }
@@ -167,13 +168,11 @@
                 }
                 if (clickedNode) clickedNode.classed($$.config.selectedClass,true);
                 if ($$.config.onSelect) {
-                    var found = node.selectAll(nodeSelector).filter("." + $$.config.selectedClass); // do not filter "targets" here due to "targets" possibly not containing all elements (in case of multiselect)
-                    var foundIdx = "";
-                    found.each(function(d,i) { foundIdx += i; });
-                    if (currentlyFound !== foundIdx) {
-                        $$.config.onSelect.call(found, found);
-                        currentlyFound = foundIdx;
+                    var foundThisScan = node.selectAll(nodeSelector).filter("." + $$.config.selectedClass); // do not filter "targets" here due to "targets" possibly not containing all elements (in case of multiselect)
+                    if (currentSelection.size() !== foundThisScan.size()) {
+                        $$.config.onSelect.call(node, foundThisScan/*, currentSelection*/); // leaving this out for now
                     }
+                    currentSelection = foundThisScan;
                 }
             }
         })
@@ -257,10 +256,18 @@
         targetCircles
             .each(function(d, i, a) {
                 var thisCircle = $$.d3.select(this);
-                if (circleWithinArea({ x: thisCircle.attr("cx"), y: thisCircle.attr("cy"), r: thisCircle.attr("r") }, applyMatrixTransformToRect(rectNode.getTransformToElement(this), rect))) {
-                    thisCircle.classed($$.config.selectedClass, true);
+                if (thisCircle.attr("r") !== "0") {
+                    if (circleWithinArea({ x: thisCircle.attr("cx"), y: thisCircle.attr("cy"), r: thisCircle.attr("r") }, applyMatrixTransformToRect(rectNode.getTransformToElement(this), rect))) {
+                        thisCircle.classed($$.config.selectedClass, true);
+                    } else {
+                    thisCircle.classed($$.config.selectedClass, false);
+                    }
                 } else {
-                   thisCircle.classed($$.config.selectedClass, false);
+                    if (rectWithinArea({ x: thisCircle.attr("cx")|0, y: thisCircle.attr("cy")|0, width: 0, height: 0 }, applyMatrixTransformToRect(rectNode.getTransformToElement(this), rect))) {
+                        thisCircle.classed($$.config.selectedClass, true);
+                    } else {
+                    thisCircle.classed($$.config.selectedClass, false);
+                    }
                 }
         });
     }
