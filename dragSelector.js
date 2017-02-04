@@ -167,13 +167,13 @@
                 }
                 scan = 0;
                 if ($$.config.selectNode === "circle") {
-                    circleSearch.call($$, getTargetsToScan(targets, $$.config.selectedClass, $$.rect.isIncreasing(), $$.rect.isDecreasing()) , $$.rect.getDimensions(), $$.rect.node);
+                    circleSearch.call($$, getTargetsToScan(targets, $$.config.selectedClass, $$.rect.bothDimensionsIncreasing(), $$.rect.bothDimensionsDecreasing()) , $$.rect.getDimensions(), $$.rect.node);
                 } else if ($$.config.selectNode === "rect") {
-                    rectSearch.call($$, getTargetsToScan(targets, $$.config.selectedClass, $$.rect.isIncreasing(), $$.rect.isDecreasing()), $$.rect.getDimensions(), $$.rect.node);
+                    rectSearch.call($$, getTargetsToScan(targets, $$.config.selectedClass, $$.rect.bothDimensionsIncreasing(), $$.rect.bothDimensionsDecreasing()), $$.rect.getDimensions(), $$.rect.node);
                 } else if ($$.config.selectNode === "path") {
-                    pathSearch.call($$, getTargetsToScan(targets, $$.config.selectedClass, $$.rect.isIncreasing(), $$.rect.isDecreasing()), $$.rect.getDimensions(), $$.rect.node);
+                    pathSearch.call($$, getTargetsToScan(targets, $$.config.selectedClass, $$.rect.bothDimensionsIncreasing(), $$.rect.bothDimensionsDecreasing()), $$.rect.getDimensions(), $$.rect.node);
                 } else if ($$.config.selectNode === "line") {
-                    lineSearch.call($$, getTargetsToScan(targets, $$.config.selectedClass, $$.rect.isIncreasing(), $$.rect.isDecreasing()), $$.rect.getDimensions(), $$.rect.node);
+                    lineSearch.call($$, getTargetsToScan(targets, $$.config.selectedClass, $$.rect.bothDimensionsIncreasing(), $$.rect.bothDimensionsDecreasing()), $$.rect.getDimensions(), $$.rect.node);
                 }
                 if (clickedNode) clickedNode.classed($$.config.selectedClass,true);
                 if ($$.config.onSelect) {
@@ -254,14 +254,14 @@
             this.dimensions.y = this.anchor.y;
             this.dimensions.height = movement.y;
         }
-        this.widthIncreasing = oldHeight <= this.dimensions.width;
+        this.widthIncreasing = oldWidth <= this.dimensions.width;
         this.heightIncreasing = oldHeight <= this.dimensions.height;
         this.selection.attr(this.dimensions);
     };
-    r_fn.isIncreasing = function() {
+    r_fn.bothDimensionsIncreasing = function() {
         return this.heightIncreasing && this.widthIncreasing;
     };
-    r_fn.isDecreasing = function() {
+    r_fn.bothDimensionsDecreasing = function() {
         return !this.heightIncreasing && !this.widthIncreasing;
     };
 
