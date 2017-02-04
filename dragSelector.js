@@ -3,6 +3,11 @@
     function dragSelector(config) {
         return new DSInternal(config);
     }
+
+    // getTransformToElement polyfill for Chrome
+    SVGElement.prototype.getTransformToElement = SVGElement.prototype.getTransformToElement || function(toElement) {
+        return toElement.getScreenCTM().inverse().multiply(this.getScreenCTM());  
+    };
     
     dragSelector.version = "0.0.1";
     
@@ -98,6 +103,9 @@
         if (!$$.config.selectedClass) {
             throw Error("The \"selectedClass\" configuration option must be specified and must not be falsy");
         }
+        if ($$.config.selectNode === "path" && (!SVGPathElement.prototype.getPathData || !SVGPathElement.prototype.setPathData)) {
+            throw Error("If the \"selectNode\" configuration option is set to \"path\" then the getPathData polyfill must be used. The polyfill can be acquired at https://github.com/jarek-foksa/path-data-polyfill.js")
+        }
         return function(node) {
             internalSelectInit.call($$, node);
         };
@@ -120,12 +128,14 @@
                 $$.d3.event.stopImmediatePropagation(); // this prevents other mousedown events firing afterwards on our "node" selection - it is required to prevent panning when using d3.behavior.zoom(), particularly for maps
                 dblClicked = false;
             }
+            var reset = false;
             if (($$.config.multiSelectKey === "ctrl" && $$.d3.event.ctrlKey) || 
                 ($$.config.multiSelectKey === "shift" && $$.d3.event.shiftKey) || 
                 ($$.config.multiSelectKey === "alt" && $$.d3.event.altKey)) {
                 targets = targets.filter(":not(." + $$.config.selectedClass + ")"); // set the targets (the things to be searched) to exclude those already selected
             } else {
                 targets = node.selectAll(nodeSelector); // else reset - we search all
+                reset = true;
             }
             $$.d3.event.preventDefault(); // this prevents text from being selected - this should not be configurable due to how necessary it is
             if ($$.rect) { 
@@ -135,14 +145,13 @@
             if ($$.config.onDragStart) $$.config.onDragStart.call(this);
             $$.rect = new Rect($$.d3.mouse($$.config.rectTranslateNode || this),$$.config.rectTranslateNode ? $$.d3.select($$.config.rectTranslateNode).attr("transform") : "translate(0,0)", $$.config.rectangleClass);
             $$.rect.appendTo(node);
-            if ($$.config.selectNode === "path") { // check whether, when clicking, we are clicking inside a path and hence should select it
-                targets
-                    .each(function(d, i, a) {
-                        if ($$.d3.event.target === this) { // ought this be currentTarget?
-                            clickedNode = $$.d3.select(this);
-                        }
-                    });
-            }
+            targets.each(function(d, i, a) {
+                    if ($$.d3.event.target === this) { // ought this be currentTarget?
+                        clickedNode = $$.d3.select(this);
+                    } else if (reset) {
+                        $$.d3.select(this).classed($$.config.selectedClass, false);
+                    }
+                });
             currentSelection = $$.d3.select(null);
         });
         (function() {
@@ -153,18 +162,18 @@
             if ($$.rect) {
                 if ($$.config.preventDragBubbling) pauseEvent($$.d3.event);
                 $$.rect.reDraw($$.d3.mouse($$.config.rectTranslateNode || node.node()));
-                if ((scan++ === 5)) { 
-                    scan = 0;
-                    return; // scan only every 4th event - this is fine due to frequency that this event occurs
+                if ((scan++ !== 3)) { 
+                    return; // scan only every 3rd event - this is fine due to frequency that this event occurs
                 }
+                scan = 0;
                 if ($$.config.selectNode === "circle") {
-                    circleSearch.call($$, targets, $$.rect.getDimensions(), $$.rect.node);
+                    circleSearch.call($$, getTargetsToScan(targets, $$.config.selectedClass, $$.rect.isIncreasing(), $$.rect.isDecreasing()) , $$.rect.getDimensions(), $$.rect.node);
                 } else if ($$.config.selectNode === "rect") {
-                    rectSearch.call($$, targets, $$.rect.getDimensions(), $$.rect.node);
+                    rectSearch.call($$, getTargetsToScan(targets, $$.config.selectedClass, $$.rect.isIncreasing(), $$.rect.isDecreasing()), $$.rect.getDimensions(), $$.rect.node);
                 } else if ($$.config.selectNode === "path") {
-                    pathSearch.call($$, targets, $$.rect.getDimensions(), $$.rect.node);
+                    pathSearch.call($$, getTargetsToScan(targets, $$.config.selectedClass, $$.rect.isIncreasing(), $$.rect.isDecreasing()), $$.rect.getDimensions(), $$.rect.node);
                 } else if ($$.config.selectNode === "line") {
-                    lineSearch.call($$, targets, $$.rect.getDimensions(), $$.rect.node);
+                    lineSearch.call($$, getTargetsToScan(targets, $$.config.selectedClass, $$.rect.isIncreasing(), $$.rect.isDecreasing()), $$.rect.getDimensions(), $$.rect.node);
                 }
                 if (clickedNode) clickedNode.classed($$.config.selectedClass,true);
                 if ($$.config.onSelect) {
@@ -186,6 +195,7 @@
                     $$.config.onDragEnd.call(selected, selected);
                 }
             }
+            scan = 3;
         });
     }
     
@@ -197,6 +207,8 @@
         this.dimensions = {};
         this.node = null;
         this.selection = null;
+        this.widthIncreasing = false;
+        this.heightIncreasing = false;
     }
     
     var r_fn = Rect.prototype;
@@ -226,6 +238,8 @@
                 x: mouseCoordinates[0] - this.dimensions.x,
                 y: mouseCoordinates[1] - this.dimensions.y
         };
+        var oldHeight = this.dimensions.height;
+        var oldWidth = this.dimensions.width;
         if (movement.x < 1 || movement.x * 2 < this.dimensions.width) {
             this.dimensions.width = Math.abs(this.anchor.x - mouseCoordinates[0]); // abs stops errors when moving extremely fast
             this.dimensions.x = mouseCoordinates[0];
@@ -240,8 +254,26 @@
             this.dimensions.y = this.anchor.y;
             this.dimensions.height = movement.y;
         }
+        this.widthIncreasing = oldHeight <= this.dimensions.width;
+        this.heightIncreasing = oldHeight <= this.dimensions.height;
         this.selection.attr(this.dimensions);
     };
+    r_fn.isIncreasing = function() {
+        return this.heightIncreasing && this.widthIncreasing;
+    };
+    r_fn.isDecreasing = function() {
+        return !this.heightIncreasing && !this.widthIncreasing;
+    };
+
+    function getTargetsToScan(allTargets, filterClass, isRectIncreasing, isRectDecreasing) {
+        if (isRectIncreasing) {
+            return allTargets.filter(":not(." + filterClass + ")");
+        }
+        if (isRectDecreasing) {
+            return allTargets.filter("." + filterClass);
+        }
+        return allTargets;
+    }
     
     // This function is a fast and lazy approximation - for the purposes of what this tool is designed for, it works
     // It will not universally work - e.g. it works with translations, but not rotations or skews
@@ -298,10 +330,10 @@
                     lineSelection.classed($$.config.selectedClass, false);
                     return;
                 }
-                if (lineWithinArea({ 
-                        start: { x: (lineSelection.attr("x1")|0)||0, y: (lineSelection.attr("y1")|0)||0 }, 
-                        end: { x: (lineSelection.attr("x2")|0)||0, y: (lineSelection.attr("y2")|0)||0 } 
-                    }, xformRect)) {
+                if (lineWithinArea( [ 
+                        [ (lineSelection.attr("x1")|0)||0, (lineSelection.attr("y1")|0)||0 ], 
+                        [ (lineSelection.attr("x2")|0)||0, (lineSelection.attr("y2")|0)||0 ] 
+                    ], xformRect)) {
                     lineSelection.classed($$.config.selectedClass, true);
                     return;
                 } else {
@@ -319,25 +351,25 @@
                     $$.d3.select(this).classed($$.config.selectedClass, false);
                     return;
                 }
-                var lineSegments = this.pathSegList,
-                    previousPoint = lineSegments.getItem(0),
-                    curSubPath = lineSegments.getItem(0),
+                var lineSegments = this.getPathData(),
+                    previousPoint = lineSegments[0],
+                    curSubPath = lineSegments[0],
                     lineSelection = $$.d3.select(this),
-                    l = lineSegments.numberOfItems, j = 0;
+                    l = lineSegments.length, j = 0;
                 while (++j < l) {
-                    var segment = lineSegments.getItem(j);
-                    switch (segment.pathSegType) {
-                        case SVGPathSeg.PATHSEG_MOVETO_ABS :
+                    var segment = lineSegments[j];
+                    switch (segment.type) {
+                        case /*SVGPathSeg.PATHSEG_MOVETO_ABS*/"M":
                             curSubPath = segment;
                             break;
-                        case SVGPathSeg.PATHSEG_LINETO_ABS:
-                            if (lineWithinArea({ start: previousPoint, end: segment }, xformRect)) {
+                        case /*SVGPathSeg.PATHSEG_LINETO_ABS*/"L":
+                            if (lineWithinArea([previousPoint.values, segment.values], xformRect)) {
                                 lineSelection.classed($$.config.selectedClass, true);
                                 return;
                             }
                             break;
-                        case SVGPathSeg.PATHSEG_CLOSEPATH:
-                            if (lineWithinArea({ start: previousPoint, end: curSubPath }, xformRect)) {
+                        case /*SVGPathSeg.PATHSEG_CLOSEPATH*/"Z":
+                            if (lineWithinArea([previousPoint.values, curSubPath.values], xformRect)) {
                                 lineSelection.classed($$.config.selectedClass, true);
                                 return;
                             }
@@ -387,13 +419,13 @@
             tr = { x: area.x + area.width, y: area.y + area.height },
             br = { x: area.x + area.width, y: area.y },
             bl = { x: area.x, y: area.y };
-        return (endProject(line.start, line.end, tl, tr, br, bl) && cornersSameSide([bl,br,tr,tl],line.start,line.end)); // pass the cornors in array from bottom left c-clockwise to top left
+        return (endProject(line[0], line[1], tl, tr, br, bl) && cornersSameSide([bl,br,tr,tl], line[0], line[1])); // pass the cornors in array from bottom left c-clockwise to top left
     }
     
     function cornersSameSide(cornorsArr, lineStart, lineEnd) {
-        var xC = lineStart.x - lineEnd.x, 
-            yC = lineEnd.y - lineStart.y, 
-            os = lineEnd.x * lineStart.y - lineStart.x * lineEnd.y,
+        var xC = lineStart[0] - lineEnd[0], 
+            yC = lineEnd[1] - lineStart[1], 
+            os = lineEnd[0] * lineStart[1] - lineStart[0] * lineEnd[1],
             v = cornorsArr[3].x * yC + cornorsArr[3].y * xC + os,
             sign = (v < 0 ? -1 : (v > 0 ? 1 : 0)), 
             i = 3;
@@ -421,10 +453,10 @@
         return false;
     }
     function endProject(lineStart, lineEnd, tl, tr, br, bl) {
-        if (lineStart.y > tr.y && lineEnd.y > tr.y) return false;
-        if (lineStart.y < bl.y && lineEnd.y < bl.y) return false;
-        if (lineStart.x > tr.x && lineEnd.x > tr.x) return false;
-        if (lineStart.x < bl.x && lineEnd.x < bl.x) return false;
+        if (lineStart[1] > tr.y && lineEnd[1] > tr.y) return false;
+        if (lineStart[1] < bl.y && lineEnd[1] < bl.y) return false;
+        if (lineStart[0] > tr.x && lineEnd[0] > tr.x) return false;
+        if (lineStart[0] < bl.x && lineEnd[0] < bl.x) return false;
         return true;
     }
     
@@ -432,25 +464,20 @@
         var lines = [],
             points = [],
             i = 0, 
-            segmentLength = getSegmentLength(clonedNode, start, segment),
+            segmentLength = getSegmentLength(clonedNode, start.values, segment),
             precision = 8; // increasing this will degrade performance but will increase the accuracy of the resampling. ** hard coded for the present **
         points.push(clonedNode.getPointAtLength(0));
         while ((i+=(1/precision)) <= 1) {
             var curPoint = clonedNode.getPointAtLength(i * segmentLength),
                 pi = points.length - 1;
-            lines.push({ start: { x: points[pi].x, y: points[pi].y }, end: { x: curPoint.x, y: curPoint.y }});
+            lines.push([ [ points[pi].x, points[pi].y ], [ curPoint.x, curPoint.y ] ]);
             points.push(curPoint);
         }
         return lines;
     }
     
     function getSegmentLength(node, start, segment) {
-        var startX = typeof start.x !== 'undefined' ? start.x : start.x1, 
-            startY = typeof start.y !== 'undefined' ? start.y : start.y1,
-            startEl = node.createSVGPathSegMovetoAbs(startX, startY);
-        node.pathSegList.clear();
-        node.pathSegList.appendItem(startEl);
-        node.pathSegList.appendItem(segment);
+        node.setPathData([{ type: "M", values: start }, segment]);
         return node.getTotalLength();
     }
     
